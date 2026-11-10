@@ -172,7 +172,7 @@ gh release create "v$v" $files --repo OWNER/REPO --verify-tag --prerelease --tit
 
 1. `gradle.properties` の `incallagent.versionCode` を上げ、`incallagent.versionName` を変える
 2. 同じ鍵で 4 節から 6 節を行う。証明書の SHA-256 が前の版と同じことを確かめる
-3. 使う人は上書きで入れられます。アプリを入れ直すと手伝い役は終わるので、起動し直してもらいます
+3. 使う人は上書きで入れられます。アプリを入れ直すと手伝い役は終わります。PC なしの手順でペアリングしてあって、自動の起動がオンなら、アプリが起動し直します。そうでないときは、起動し直してもらいます
 
 ## 8. ソースの公開
 

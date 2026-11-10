@@ -81,6 +81,26 @@ class DualLiveConnector(
 
         /** A line the mouth never finishes must not hold up what comes after it. */
         const val LINE_MAX_MS = 30_000L
+
+        /**
+         * A line has had its voice, the voice has stopped, and the mouth has not said that the line ended: this long
+         * after it should have been heard to the end, it is over. In a real call that end did not come, and what
+         * was to be said next waited in silence. A line with no voice yet has all of [LINE_MAX_MS].
+         */
+        const val LINE_END_WAIT_MS = 2_000L
+
+        /**
+         * The line sent after one that was given up on: the voice that comes first may be what was left of the
+         * older line, and this line's own can take more than 2 s to start. For this long it is not given up on.
+         */
+        const val AFTER_GIVING_UP_MS = 4_000L
+
+        /**
+         * An end came and the line going out has no voice: it is the late end of the line given up on, or this
+         * line's own with nothing in it. They cannot be told apart, so its voice is waited for, but not for [LINE_MAX_MS].
+         */
+        const val ONLY_AN_END_MS = 8_000L
+
         const val MIN_INTERRUPT_CHARS = 4
     }
 }
@@ -168,6 +188,11 @@ private fun voiceMs(content: JsonObject): Long {
     }
 }
 
+/** The same message, for a turn that has been counted as ended already. */
+private fun withoutTheEnd(content: JsonObject) = buildJsonObject {
+    put("serverContent", JsonObject(content - "turnComplete"))
+}.toString()
+
 private fun heardMessage(text: String) = buildJsonObject {
     putJsonObject("serverContent") { putJsonObject("inputTranscription") { put("text", text) } }
 }.toString()
@@ -228,6 +253,18 @@ private class DualCall(
     /** The rest of the line going out is dropped until its end: the other side talked over it. */
     private var cutting = false
     private var lineTimer: CallScheduler.Cancellable? = null
+
+    /** Set once the line has had voice: ends it if the mouth never says that it ended. */
+    private var endWatch: CallScheduler.Cancellable? = null
+
+    /** The end of the last line given up on may still come, and is not the end of the line going out. An older one's could only have come before that line's voice. */
+    private var endOwed = false
+
+    /** That end came after this line had voice, and no voice has come since. It may well have been this line's own, so this line owes none. */
+    private var endMayHaveCome = false
+
+    /** Until then the line going out is not given up on, whatever voice has come. */
+    private var notGivenUpBefore = 0L
 
     /** By the clock, where the voice that has arrived ends. */
     private var voiceEndsAt = 0L
@@ -412,8 +449,21 @@ private class DualCall(
         }
         if ("goAway" in message) session.onMessage(text)
         val content = message["serverContent"] as? JsonObject ?: return
-        val finished = content.flag("turnComplete")
+        val ended = content.flag("turnComplete")
+        val oldEnd = ended && endOwed
+        if (oldEnd) {
+            endOwed = false
+            log("the end of a line given up on came: voice $lineHasVoice")
+            // With voice, it may have been this line's own. With none, this line's own may have had nothing in it
+            if (lineHasVoice) endMayHaveCome = true else if (speaking != null) watchForTheEnd()
+        }
+        val finished = ended && !oldEnd
         if (cutting) {
+            if (voiceMs(content) > 0) {
+                lineHasVoice = true
+                endMayHaveCome = false
+                watchForTheEnd()
+            }
             if (finished) {
                 cutting = false
                 session.onMessage(TURN_COMPLETE)
@@ -424,7 +474,7 @@ private class DualCall(
         // Nothing was asked of it: a voice of its own is not for the other side. Its written words can still come after a line
         if (speaking == null && voiceMs(content) > 0) return
         noteTheVoice(content)
-        session.onMessage(text)
+        session.onMessage(if (oldEnd) withoutTheEnd(content) else text)
         if (finished) lineFinished()
     }
 
@@ -432,7 +482,9 @@ private class DualCall(
         val voice = voiceMs(content)
         if (voice > 0) {
             lineHasVoice = true
+            endMayHaveCome = false
             voiceEndsAt = maxOf(voiceEndsAt, scheduler.now()) + voice
+            watchForTheEnd()
         }
         val ms = answerMs ?: return
         if (speaking?.kind != LineKind.SAY || voice == 0L) return
@@ -441,9 +493,34 @@ private class DualCall(
         takenBack = 0
     }
 
+    /** The voice having stopped ends the line if the mouth never does: put off by every piece of voice that comes. */
+    private fun watchForTheEnd() {
+        endWatch?.cancel()
+        val now = scheduler.now()
+        val at = when {
+            cutting -> now + DualLiveConnector.LINE_END_WAIT_MS
+            !lineHasVoice -> now + DualLiveConnector.ONLY_AN_END_MS
+            else -> maxOf(heardBy() + DualLiveConnector.LINE_END_WAIT_MS, notGivenUpBefore)
+        }
+        endWatch = afterDelay(at - now) { giveUp("the voice of a line stopped and its end did not come") }
+    }
+
+    /** By the clock, when what has come of the line going out has surely been heard. */
+    private fun heardBy() = voiceEndsAt + if (speaking?.fixed == true) DualLiveConnector.FIXED_LINE_MARGIN_MS else 0
+
+    /** The mouth has not said that the line ended, and it is over all the same: the session hears what the mouth would have said. */
+    private fun giveUp(why: String) {
+        if (!endMayHaveCome) endOwed = true
+        log("$why: ${speaking?.kind}, cut $cutting, end owed $endOwed")
+        session.onMessage(TURN_COMPLETE)
+        lineFinished()
+    }
+
     private fun lineFinished() {
         lineTimer?.cancel()
         lineTimer = null
+        endWatch?.cancel()
+        endWatch = null
         val done = speaking
         val heardUntil = voiceEndsAt + if (done?.fixed == true && lineHasVoice) DualLiveConnector.FIXED_LINE_MARGIN_MS else 0
         if (done != null && lineHasVoice && !cutting) playingOut += PlayingOut(done, heardUntil)
@@ -470,10 +547,9 @@ private class DualCall(
             return end()
         }
         speaking = next
-        lineTimer = afterDelay(DualLiveConnector.LINE_MAX_MS) {
-            log("a line was not finished in time")
-            lineFinished()
-        }
+        endMayHaveCome = false
+        notGivenUpBefore = if (endOwed) scheduler.now() + DualLiveConnector.AFTER_GIVING_UP_MS else 0
+        lineTimer = afterDelay(DualLiveConnector.LINE_MAX_MS) { giveUp("a line was not finished in time") }
     }
 
     // --- the ears ---
@@ -605,7 +681,7 @@ private class DualCall(
         session.onMessage(heardMessage(text))
         if (over) return
         // A nod while the AI talks needs no answer
-        if ((speaking != null || stillHeard()) && isNod(text)) return
+        if (aiTalking() && isNod(text)) return
         if (mayCut && isSubstantial(text)) interrupt()
         unanswered += text
         waitingSince = scheduler.now()
@@ -653,7 +729,13 @@ private class DualCall(
         if (going.any { it.fixed }) return
         session.onMessage(INTERRUPTED)
         // All of the line has come and only the playing is stopped: its turn ends here
-        if (line != null) cutting = true else session.onMessage(TURN_COMPLETE)
+        if (line != null) {
+            cutting = true
+            // With no voice yet the mouth may only be late, and has all its time
+            if (lineHasVoice) watchForTheEnd()
+        } else {
+            session.onMessage(TURN_COMPLETE)
+        }
         // Those of an answer that is taken back with this are told as a whole, when it is
         val takenBack = thinking?.takeIf { it.input !is BrainInput.Note }?.linesOut.orEmpty()
         val notSaid = (going + lines).filter { it.kind == LineKind.SAY && it !in takenBack }.joinToString("") { it.text }
@@ -663,6 +745,12 @@ private class DualCall(
         if (notSaid.isNotEmpty()) cutOff = cutOff.orEmpty() + notSaid
         stopFillers()
         cancelThinking()
+    }
+
+    /** Not a line whose voice has run out: all it may be waiting for is an end that will not come, and they are answering it. */
+    private fun aiTalking(): Boolean {
+        val voiceRanOut = lineHasVoice && !cutting && scheduler.now() >= heardBy()
+        return (speaking != null && !voiceRanOut) || stillHeard()
     }
 
     /** Some of a finished line is still coming out of the phone. */
@@ -904,6 +992,7 @@ private class DualCall(
         interimTimer?.cancel()
         earlyTimer?.cancel()
         lineTimer?.cancel()
+        endWatch?.cancel()
         runCatching { ear?.cancel() }
         runCatching { mouth?.cancel() }
         (scheduler as? ExecutorScheduler)?.shutdown()

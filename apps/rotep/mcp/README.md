@@ -22,14 +22,15 @@ Muse・Grok ──▶ 自分のサーバー ◀── スマホの AITEL（開�
 2. AI が `create_call_request` で詳細を渡す。電話をかける時刻は `call_at`（`windows` は予約したい日時で、別のものです）
 3. 足りない項目があると `status: "needs_info"` と `questions` が返り、AI が項目を足して送り直す
 4. スマホの AITEL に依頼が届く（開いていなければ、次に取りに行ったときに通知）。**確認の画面で本人が承認する**。承認すると、指定の時刻に電話する
-5. 電話が終わると、AI が `get_call_request`（`id` を省くと最新）で結果を読む
+5. 電話が終わると、AI が `get_call_request`（`id` を省くと、自分の依頼の中で最新）で結果を読む
 
 スマホの設定「開発者向けオプションを普段は切っておく」がオンでも、依頼の受け取りは同じです（スマホから外へ取りに行くだけで、手伝い役も adb も使いません）。電話を始めるときは、ワイヤレスデバッグを許可した Wi-Fi が要ります。準備に失敗すると、`get_call_request` の `message` に理由の文が入ります（時刻を指定した電話は `not_placed`、すぐの電話は `waiting_for_approval` のままです）。
 
 ### 確かめたことと、確かめていないこと
 
 - 確かめた：本物の HTTP サーバーと偽のスマホで 5 段の往復（`apps/rotep/server/test_aitel_relay.py`）。公式の MCP SDK（Python 2.3.0）で、Legacy と 2026-07-28 の両方のモードでの接続、ツールの一覧、依頼、問い返し、状態の読み取り
-- 確かめていない：実際の Grok と Muse からの接続（Grok の OAuth の自動登録、Muse がコネクタを作る手順、定期の実行からの呼び出し）。つながらないときは、`python aitel_setup.py check`（[docs/mcp-setup.md](../../../docs/mcp-setup.md)）でサーバーの問題かどうかを切り分けられます
+- 本物の Grok と Muse でも確かめた（2026-11-10、作者のサーバー）：Muse は、依頼、スマホでの承認、実際の電話、結果を読むところまで。Grok は、依頼がスマホに届いて断るところまで
+- 確かめていない：Grok から実際に電話して結果を読むところ、定期の実行からの呼び出し。つながらないときは、`python aitel_setup.py check`（[docs/mcp-setup.md](../../../docs/mcp-setup.md)）でサーバーの問題かどうかを切り分けられます
 
 ## 用意するもの（PC の AI から頼むとき）
 

@@ -229,8 +229,9 @@ class PhoneRequestHandler(private val requests: PhoneRequestStore, private val p
 private const val PRACTICE = "practice"
 
 /**
- * What the sender is told about a finished call. No phone number and no conversation lines. The
- * texts come from what the other side said, so they are data for the sender, not instructions.
+ * What the sender is told about a finished call. No phone number and no conversation lines: what
+ * the AI wrote down goes through [hidePhoneNumbers], for an automatic voice may have read one out to it.
+ * The texts come from what the other side said, so they are data for the sender, not instructions.
  */
 fun callReport(result: CallSession.Result, changedOnPhone: Boolean?, practice: Boolean): JsonObject = buildJsonObject {
     val outcome = result.outcome
@@ -239,16 +240,16 @@ fun callReport(result: CallSession.Result, changedOnPhone: Boolean?, practice: B
     // The AI reported, and what it reported fits what was approved. Whether the errand succeeded
     // is in the outcome. The practice without a call never counts
     put("verified", !practice && result.reportedByAi && result.violations.isEmpty())
-    put("summary", outcome.summary)
-    putJsonArray("pending_items") { outcome.pendingItems.forEach { add(it) } }
-    putJsonArray("urgent_items") { outcome.urgentItems().forEach { add(it) } }
+    put("summary", hidePhoneNumbers(outcome.summary))
+    putJsonArray("pending_items") { outcome.pendingItems.forEach { add(hidePhoneNumbers(it)) } }
+    putJsonArray("urgent_items") { outcome.urgentItems().forEach { add(hidePhoneNumbers(it)) } }
     outcome.booking?.let { booking ->
         putJsonObject("booking") {
             put("start", booking.start.toString())
             booking.partySize?.let { put("party_size", it) }
-            booking.nameUsed?.let { put("name_used", it) }
-            putJsonArray("confirmed_preferences") { booking.confirmedPreferences.forEach { add(it) } }
-            putJsonArray("shop_conditions") { booking.shopConditions.forEach { add(it) } }
+            booking.nameUsed?.let { put("name_used", hidePhoneNumbers(it)) }
+            putJsonArray("confirmed_preferences") { booking.confirmedPreferences.forEach { add(hidePhoneNumbers(it)) } }
+            putJsonArray("shop_conditions") { booking.shopConditions.forEach { add(hidePhoneNumbers(it)) } }
         }
     }
     putJsonArray("violations") { result.violations.forEach { add(it.message) } }

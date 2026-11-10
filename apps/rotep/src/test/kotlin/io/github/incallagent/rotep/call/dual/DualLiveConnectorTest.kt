@@ -1360,7 +1360,12 @@ class DualLiveConnectorTest {
         val r = Rig().talking()
         r.shopSays("はい。")
         val question = r.brain.inputs.last()
-        r.scheduler.advance(DualLiveConnector.BRAIN_MAX_MS - 1)
+        // The two short words while it waits, which the mouth says as ever
+        r.scheduler.advance(DualLiveConnector.FILLER_AFTER_MS - DualLiveConnector.SHOP_SETTLE_MS)
+        r.finishLine()
+        r.scheduler.advance(DualLiveConnector.LONG_WAIT_MS - DualLiveConnector.FILLER_AFTER_MS)
+        r.finishLine()
+        r.scheduler.advance(DualLiveConnector.BRAIN_MAX_MS + DualLiveConnector.SHOP_SETTLE_MS - DualLiveConnector.LONG_WAIT_MS - 1)
         assertFalse(fallback in r.mouth.spoken())
         r.scheduler.advance(1)
         assertEquals(fallback, r.mouth.spoken().last())
@@ -1458,6 +1463,400 @@ class DualLiveConnectorTest {
         assertFalse(r.control.calls.contains("hangUp"))
         r.scheduler.advance(CallSession.Config().closingWordsMaxMs)
         assertTrue(r.control.calls.contains("hangUp"))
+    }
+
+    // --- a line whose end does not come ---
+
+    private val waitForTheEnd = DualLiveConnector.LINE_END_WAIT_MS
+
+    /** Three sentences of one answer: the first going out with two seconds of voice, made at once, and no end from the mouth. */
+    private fun Rig.lineWhoseEndDoesNotCome() {
+        shopSays("はい。")
+        line("一つ目です。")
+        line("二つ目です。")
+        line("三つ目です。")
+        mouth.audio(96_000)
+        run()
+    }
+
+    /** The first of those has been given up on, and the second has gone to the mouth in its place. */
+    private fun Rig.firstLineGivenUp() {
+        lineWhoseEndDoesNotCome()
+        scheduler.advance(2_000 + waitForTheEnd)
+        assertEquals("二つ目です。", mouth.spoken().last())
+    }
+
+    @Test
+    fun aLineWhoseEndNeverComesIsOverSoonAfterItsVoiceStops() {
+        val r = Rig().talking()
+        r.lineWhoseEndDoesNotCome()
+        r.scheduler.advance(2_000 + waitForTheEnd - 1)
+        assertEquals("the voice is playing, and then the short wait", listOf(disclosure, "一つ目です。"), r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals(listOf(disclosure, "一つ目です。", "二つ目です。"), r.mouth.spoken())
+    }
+
+    @Test
+    fun voiceThatGoesOnPutsOffTheEndOfTheLine() {
+        val r = Rig().talking()
+        r.lineWhoseEndDoesNotCome()
+        r.scheduler.advance(1_000)
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(3_000 + waitForTheEnd - 1)
+        assertFalse("二つ目です。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+    }
+
+    /** As in a real call: the short word had its voice, the mouth never said it ended, and the answer waited behind it. */
+    @Test
+    fun theAnswerBehindAShortWordThatNeverEndsStillGoesOut() {
+        val r = Rig().talking()
+        r.shopSays("二名です。")
+        r.scheduler.advance(DualLiveConnector.FILLER_AFTER_MS - DualLiveConnector.SHOP_SETTLE_MS)
+        assertEquals(DualLiveConnector.FILLER, r.mouth.spoken().last())
+        r.mouth.audio(24_000)
+        r.run()
+        r.line("承知しました。")
+        assertFalse("承知しました。" in r.mouth.spoken())
+        r.scheduler.advance(500 + waitForTheEnd)
+        assertEquals("承知しました。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun theSessionIsToldThatALineGivenUpOnHasEnded() {
+        val r = Rig().ready()
+        r.brain.answer(BrainOutput())
+        // No words of the AI in it: it is the end of this turn that makes the session ask for them
+        r.mouth.audio()
+        r.run()
+        r.scheduler.advance(100 + DualLiveConnector.FIXED_LINE_MARGIN_MS + waitForTheEnd + CallSession.Config().disclosureGraceMs)
+        assertTrue(r.brain.inputs.last() is BrainInput.Note)
+    }
+
+    @Test
+    fun aHangUpDoesNotWaitLongForAGoodbyeWhoseEndNeverComes() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.answer(BrainOutput(say = "ありがとうございました。", calls = listOf(report, endCall)))
+        r.mouth.audio()
+        r.run()
+        assertFalse(r.control.calls.contains("hangUp"))
+        r.scheduler.advance(100 + waitForTheEnd)
+        assertTrue(r.control.calls.contains("hangUp"))
+    }
+
+    @Test
+    fun aLineThatEndedIsNotGivenUpOnLater() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.line("一つ目です。")
+        r.line("二つ目です。")
+        r.line("三つ目です。")
+        r.mouth.audio(96_000)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+        r.scheduler.advance(10_000)
+        assertEquals("the watch of the first has not ended the second", "二つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun aLineWithNoVoiceYetHasTheWholeWatch() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.line("一つ目です。")
+        r.line("二つ目です。")
+        r.scheduler.advance(DualLiveConnector.LINE_MAX_MS - 1)
+        assertFalse("the model is only late", "二つ目です。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun aNodAfterTheVoiceHasStoppedIsAnAnswerEvenIfTheLineHasNotEnded() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.answer(BrainOutput(say = "十九時でよろしいでしょうか。"))
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(2_500)
+        val asked = r.brain.inputs.size
+        r.ear.final("はい。")
+        r.run()
+        r.scheduler.advance(DualLiveConnector.SHOP_SETTLE_MS)
+        assertEquals(BrainInput.ShopSaid("はい。"), r.brain.inputs.drop(asked).single())
+    }
+
+    @Test
+    fun aNodWhileTheVoiceStillPlaysNeedsNoAnswerBeforeTheLineHasEnded() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.answer(BrainOutput(say = "十九時でよろしいでしょうか。"))
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(1_500)
+        val asked = r.brain.inputs.size
+        r.ear.final("はい。")
+        r.run()
+        r.scheduler.advance(DualLiveConnector.SHOP_SETTLE_MS)
+        assertEquals(asked, r.brain.inputs.size)
+    }
+
+    // A line talked over
+
+    /** They talked over a line that had its voice, and the answer to them is waiting for that line to end. */
+    private fun Rig.talkedOverWithTheAnswerWaiting() {
+        sayingALine()
+        ear.interim("ちょっと待って")
+        run()
+        assertEquals(1, audio.flushes)
+        shopSays("ちょっと待ってください。")
+        answer(BrainOutput(say = "はい、お待ちします。"))
+        assertFalse("behind the line being cut", "はい、お待ちします。" in mouth.spoken())
+    }
+
+    @Test
+    fun aLineTalkedOverWhoseEndNeverComesIsNotWaitedForLong() {
+        val r = Rig().talking()
+        r.talkedOverWithTheAnswerWaiting()
+        r.scheduler.advance(waitForTheEnd - DualLiveConnector.SHOP_SETTLE_MS - 1)
+        assertFalse("はい、お待ちします。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("はい、お待ちします。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun voiceOfALineTalkedOverPutsOffTheEndOfTheWait() {
+        val r = Rig().talking()
+        r.talkedOverWithTheAnswerWaiting()
+        r.scheduler.advance(1_000)
+        val played = r.audio.played.size
+        r.mouth.audio()
+        r.run()
+        assertEquals("still dropped", played, r.audio.played.size)
+        r.scheduler.advance(waitForTheEnd - 1)
+        assertFalse("はい、お待ちします。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("はい、お待ちします。", r.mouth.spoken().last())
+    }
+
+    /** They talked over a line before any of its voice came. */
+    private fun Rig.talkedOverBeforeAnyVoice() {
+        shopSays("はい。")
+        answer(BrainOutput(say = "承知しました。"))
+        ear.interim("ちょっと待って")
+        run()
+        assertEquals(1, audio.flushes)
+        shopSays("ちょっと待ってください。")
+        answer(BrainOutput(say = "はい、お待ちします。"))
+    }
+
+    @Test
+    fun aLineTalkedOverBeforeAnyVoiceHasTheWholeWatch() {
+        val r = Rig().talking()
+        r.talkedOverBeforeAnyVoice()
+        r.scheduler.advance(DualLiveConnector.LINE_MAX_MS - DualLiveConnector.SHOP_SETTLE_MS - 1)
+        assertFalse("はい、お待ちします。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("はい、お待ちします。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun aLineTalkedOverBeforeItsVoiceIsNotWaitedForLongOnceTheVoiceHasCome() {
+        val r = Rig().talking()
+        r.talkedOverBeforeAnyVoice()
+        r.mouth.audio()
+        r.run()
+        r.scheduler.advance(waitForTheEnd - 1)
+        assertFalse("はい、お待ちします。" in r.mouth.spoken())
+        r.scheduler.advance(1)
+        assertEquals("はい、お待ちします。", r.mouth.spoken().last())
+    }
+
+    // What comes late, after a line was given up on
+
+    @Test
+    fun anEndThatComesLateDoesNotEndTheLineAfterIt() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+        val played = r.audio.played.size
+        r.mouth.audio()
+        r.run()
+        assertEquals("the second line is still going out", played + 1, r.audio.played.size)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("its own end", "三つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun aLineThatGotOnlyAnEndIsNotWaitedForLong() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        // An end and no voice: the late end of the first line, or the second one's own, with nothing in it
+        r.mouth.turnComplete()
+        r.run()
+        r.scheduler.advance(DualLiveConnector.ONLY_AN_END_MS - 1)
+        assertEquals("its voice may yet come", "二つ目です。", r.mouth.spoken().last())
+        r.scheduler.advance(1)
+        assertEquals("三つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun anEndThatComesLateWithNothingGoingOutIsForgotten() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.answer(BrainOutput(say = "承知しました。"))
+        r.mouth.audio()
+        r.run()
+        r.scheduler.advance(100 + waitForTheEnd)
+        r.mouth.turnComplete()
+        r.run()
+        r.shopSays("二名です。")
+        r.line("一つ目です。")
+        r.line("二つ目です。")
+        r.mouth.audio()
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("the end of the next line counts as ever", "二つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun voiceThatComesLateDoesNotEndTheLineAfterIt() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        // The rest of the first line, and the second one's own voice can take over two seconds to start
+        r.mouth.audio()
+        r.run()
+        r.scheduler.advance(3_000)
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+        val played = r.audio.played.size
+        r.mouth.audio(96_000)
+        r.run()
+        assertEquals("its voice is played", played + 1, r.audio.played.size)
+    }
+
+    @Test
+    fun anEndThatNeverCameCostsOneShortWaitAndNoMore() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        // This end is the second line's own, and looks like the late one of the first
+        r.mouth.audio(96_000)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("二つ目です。", r.mouth.spoken().last())
+        r.scheduler.advance(DualLiveConnector.AFTER_GIVING_UP_MS)
+        assertEquals("over all the same", "三つ目です。", r.mouth.spoken().last())
+        r.line("四つ目です。")
+        r.mouth.audio(96_000)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("the ends count again", "四つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun manyEndsThatNeverCameStillCostOneShortWait() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(DualLiveConnector.AFTER_GIVING_UP_MS)
+        assertEquals("no end for the second either", "三つ目です。", r.mouth.spoken().last())
+        r.line("四つ目です。")
+        r.line("五つ目です。")
+        r.mouth.audio(96_000)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("三つ目です。", r.mouth.spoken().last())
+        r.scheduler.advance(DualLiveConnector.AFTER_GIVING_UP_MS)
+        assertEquals("四つ目です。", r.mouth.spoken().last())
+        r.mouth.audio(96_000)
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("the ends count again", "五つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun voiceAfterALateEndMeansThatEndWasNotTheLinesOwn() {
+        val r = Rig().talking()
+        r.firstLineGivenUp()
+        // What was left of the first line, and its end
+        r.mouth.audio()
+        r.mouth.turnComplete()
+        r.run()
+        // The second line's own voice, and no end for it
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(2_100 + waitForTheEnd)
+        assertEquals("三つ目です。", r.mouth.spoken().last())
+        r.line("四つ目です。")
+        // The end of the second, late
+        r.mouth.turnComplete()
+        r.run()
+        assertEquals("the third is still going out", "三つ目です。", r.mouth.spoken().last())
+    }
+
+    @Test
+    fun theWordsThatComeWithALateEndStillCount() {
+        val r = Rig().ready()
+        r.answer(BrainOutput())
+        r.mouth.audio()
+        r.run()
+        r.scheduler.advance(100 + DualLiveConnector.FIXED_LINE_MARGIN_MS + waitForTheEnd)
+        r.mouth.server("""{"serverContent":{"outputTranscription":{"text":"$disclosure"},"turnComplete":true}}""")
+        r.run()
+        assertTrue(r.session.state.value.lines.any { it.who == Who.AI && disclosure in it.text })
+    }
+
+    // The fixed lines
+
+    @Test
+    fun aNodInTheLastOfADisclosureWhoseEndHasNotComeNeedsNoAnswer() {
+        val r = Rig().ready()
+        r.brain.answer(BrainOutput())
+        r.mouth.audio(96_000)
+        r.mouth.said(disclosure)
+        r.run()
+        r.scheduler.advance(2_500)
+        val asked = r.brain.inputs.size
+        r.ear.final("はい。")
+        r.run()
+        r.scheduler.advance(DualLiveConnector.SHOP_SETTLE_MS)
+        assertEquals(asked, r.brain.inputs.size)
+    }
+
+    @Test
+    fun theDisclosureIsHeardToTheEndEvenIfItsEndNeverComes() {
+        val r = Rig().ready()
+        r.answer(BrainOutput(say = "予約をお願いしたいのですが。"))
+        r.mouth.audio(96_000)
+        r.mouth.said(disclosure)
+        r.run()
+        r.scheduler.advance(2_000 + DualLiveConnector.FIXED_LINE_MARGIN_MS + waitForTheEnd - 1)
+        assertEquals("not before it has surely been heard", listOf(disclosure), r.mouth.spoken())
+        r.ear.interim("お電話ありがとうございます")
+        r.run()
+        assertEquals("and it is not cut", 0, r.audio.flushes)
+        r.scheduler.advance(1)
+        assertEquals(listOf(disclosure, "予約をお願いしたいのですが。"), r.mouth.spoken())
+    }
+
+    @Test
+    fun theFixedLineOfAFailureIsHeardToTheEndEvenIfItsEndNeverComes() {
+        val r = Rig().talking()
+        r.shopSays("はい。")
+        r.answer(BrainOutput(failed = BrainFailure.TIMEOUT))
+        assertEquals(fallback, r.mouth.spoken().last())
+        r.mouth.audio(96_000)
+        r.run()
+        r.scheduler.advance(2_000 + DualLiveConnector.FIXED_LINE_MARGIN_MS + waitForTheEnd - 1)
+        assertEquals(Phase.TALKING, r.phase)
+        r.scheduler.advance(1)
+        assertEquals(Phase.HANDED_OVER, r.phase)
     }
 
     // --- when it goes wrong, and the end ---

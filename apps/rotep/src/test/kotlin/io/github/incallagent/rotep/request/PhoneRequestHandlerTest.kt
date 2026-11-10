@@ -588,6 +588,37 @@ class PhoneRequestHandlerTest {
         assertEquals("false", callReport(result(reportedByAi = false), false, practice = false).text("verified"))
     }
 
+    @Test
+    fun noTextOfTheReportGivesTheSenderAPhoneNumber() {
+        val heard = "発信者番号の下4桁は1234"
+        val urgent = "至急：090-1234-5678 に折り返し"
+        val base = result()
+        val told = base.copy(
+            outcome = base.outcome.copy(
+                summary = heard,
+                pendingItems = listOf(heard, urgent),
+                booking = base.outcome.booking!!.copy(
+                    nameUsed = "番号 090-1234-5678",
+                    confirmedPreferences = listOf(heard),
+                    shopConditions = listOf("2時間制", heard),
+                ),
+            ),
+        )
+        val report = callReport(told, changedOnPhone = false, practice = false)
+        val heardHidden = "発信者番号の下4桁は$HIDDEN_NUMBER"
+        val urgentHidden = "至急：$HIDDEN_NUMBER に折り返し"
+        fun texts(o: JsonObject, key: String) = o.getValue(key).jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(heardHidden, report.text("summary"))
+        assertEquals(listOf(heardHidden, urgentHidden), texts(report, "pending_items"))
+        assertEquals(listOf(urgentHidden), texts(report, "urgent_items"))
+        val booking = report.getValue("booking").jsonObject
+        assertEquals("番号 $HIDDEN_NUMBER", booking.text("name_used"))
+        assertEquals(listOf(heardHidden), texts(booking, "confirmed_preferences"))
+        assertEquals(listOf("2時間制", heardHidden), texts(booking, "shop_conditions"))
+        assertEquals("2026-11-14T19:00", booking.text("start"))
+        assertEquals("what the user sees stays as it was", heard, told.outcome.summary)
+    }
+
     // --- what the user changed ---
 
     private val today: LocalDate = LocalDate.of(2026, 11, 8)
