@@ -1,0 +1,12 @@
+# Keep shell scripts LF even on Windows checkouts (core.autocrlf=true would make them CRLF,
+# which breaks ./gradlew on Linux CI and the Magisk installer scripts on the device).
+* text=auto
+gradlew text eol=lf
+*.sh text eol=lf
+magisk-module/update-binary text eol=lf
+magisk-module/updater-script text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.wav binary
+tools/git-hooks/* text eol=lf

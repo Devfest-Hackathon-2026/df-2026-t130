@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<resources>
+    <!-- The yellow of the owner's icon image -->
+    <color name="ic_launcher_background">#F0CB00</color>
+</resources>

@@ -1,0 +1,76 @@
+{
+    "schemaVersion": 1,
+    "id": "example-0001",
+    "createdAt": "2026-11-06T03:00:00Z",
+    "approval": {
+        "approvedAt": "2026-11-06T03:05:00Z"
+    },
+    "timeZone": "Asia/Tokyo",
+    "target": {
+        "businessName": "ビストロ・サンプル",
+        "phoneNumber": "03-0000-0000",
+        "kind": "RESTAURANT"
+    },
+    "purpose": "NEW_BOOKING",
+    "request": {
+        "partySize": {
+            "preferred": 2,
+            "min": 2,
+            "max": 3
+        },
+        "windows": [
+            {
+                "earliestStart": "2026-11-14T19:00",
+                "latestStart": "2026-11-14T19:00"
+            },
+            {
+                "earliestStart": "2026-11-14T18:30",
+                "latestStart": "2026-11-14T20:00"
+            },
+            {
+                "earliestStart": "2026-11-15T18:00",
+                "latestStart": "2026-11-15T19:30"
+            }
+        ],
+        "durationMinutes": 120,
+        "preferences": [
+            {
+                "text": "禁煙席",
+                "required": true
+            },
+            {
+                "text": "個室",
+                "required": false
+            }
+        ],
+        "notesForShop": "誕生日のお祝いです"
+    },
+    "authority": {
+        "mayAcceptOutsideWindows": false,
+        "maxBudgetPerPersonYen": 8000,
+        "mayAcceptCancellationPolicy": false,
+        "mayAcceptPrepayment": false,
+        "mayJoinWaitlist": false,
+        "mayLeaveVoicemail": false
+    },
+    "disclosure": {
+        "reservationName": "ヤマダ",
+        "callbackNumber": "090-0000-0000",
+        "mayTell": [],
+        "neverTell": [
+            "クレジットカード番号",
+            "銀行口座",
+            "暗証番号・パスワード",
+            "住所",
+            "生年月日",
+            "マイナンバー・保険証などの番号",
+            "病状や健康に関する詳細"
+        ]
+    },
+    "conversation": {
+        "aiDisclosure": "お忙しいところ失礼いたします。こちらはAIによる代理のお電話です。",
+        "fallbackPhrase": "その点は確認して、改めてこちらから折り返しご連絡いたします。",
+        "language": "ja-JP",
+        "maxCallSeconds": 300
+    }
+}

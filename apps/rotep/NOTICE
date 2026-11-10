@@ -1,0 +1,202 @@
+Third-party notices for apps/rotep
+==================================
+
+incall-agent (rotep) itself is licensed under the GNU General Public License v3.0 only
+(see the LICENSE file at the top of the repository).
+
+The parts below are included in the app under their own licenses. The full text of the Apache License,
+Version 2.0, which many of them use, is in licenses/Apache-2.0.txt.
+
+
+scrcpy (the approach for the helper's Context and Binder handoff)
+-----------------------------------------------------------------
+
+The helper runs from app_process as the shell user. It has to make a Context there without calling
+LoadedApk.makeApplication, and it has to hand a Binder to the app's content provider from the shell
+process. HelperContext.kt, ShellContext.kt and BinderSender.kt (all in
+src/main/kotlin/io/github/incallagent/rotep/shell/) follow the approach of the scrcpy server, version
+3.3.1: its Workarounds and FakeContext classes (a bare ActivityThread, the system Context wrapped so that
+the package name and the attribution source name the shell) and its wrappers ActivityManager and
+ContentProvider (getContentProviderExternal, then a call on the provider, then
+removeContentProviderExternal).
+
+No scrcpy source file or library is included in the app. The code is written for this app; only the
+order of the steps and the idea of the wrapper are taken from scrcpy.
+
+Source: https://github.com/Genymobile/scrcpy
+Copyright: Genymobile and Romain Vimont (see the scrcpy repository)
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+OkHttp and Okio
+---------------
+
+Used through the Maven Central artifacts (the version in gradle/libs.versions.toml, 5.5.1):
+
+  com.squareup.okhttp3:okhttp
+  com.squareup.okio:okio      (pulled in by okhttp)
+
+The shared module agent-live uses the same library. apps/rotep also uses it directly, for its
+own Gemini Live connection (src/main/kotlin/io/github/incallagent/rotep/call/RotepLive.kt).
+
+Source: https://github.com/square/okhttp and https://github.com/square/okio
+Copyright: Square, Inc.
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+Public Suffix List (inside OkHttp)
+----------------------------------
+
+OkHttp's Android artifact (com.squareup.okhttp3:okhttp-android) puts assets/PublicSuffixDatabase.list in
+the app. That file is compiled from the Public Suffix List and is included as OkHttp ships it.
+
+Source: https://publicsuffix.org/list/public_suffix_list.dat
+Copyright: the contributors to the Public Suffix List (https://publicsuffix.org)
+License: Mozilla Public License, Version 2.0
+  https://mozilla.org/MPL/2.0/
+
+
+Android Jetpack and Jetpack Compose (AndroidX)
+----------------------------------------------
+
+Used through the artifacts on Google's Maven repository, with the libraries they pull in. The versions
+come from gradle/libs.versions.toml and the Compose BOM.
+
+  androidx.activity, androidx.annotation, androidx.arch.core, androidx.autofill, androidx.collection,
+  androidx.compose (animation, foundation, material, material3, runtime, ui), androidx.concurrent,
+  androidx.core, androidx.customview, androidx.emoji2, androidx.graphics, androidx.interpolator,
+  androidx.lifecycle, androidx.navigationevent, androidx.profileinstaller, androidx.savedstate,
+  androidx.startup, androidx.tracing, androidx.versionedparcelable, androidx.window
+
+The native library libandroidx.graphics.path.so comes from androidx.graphics:graphics-path.
+
+Source: https://android.googlesource.com/platform/frameworks/support
+Copyright: The Android Open Source Project
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+Kotlin and kotlinx
+------------------
+
+  org.jetbrains.kotlin:kotlin-stdlib
+  org.jetbrains.kotlinx:kotlinx-coroutines-android and kotlinx-coroutines-core
+  org.jetbrains.kotlinx:kotlinx-serialization-core and kotlinx-serialization-json
+  org.jetbrains:annotations
+
+Source: https://github.com/JetBrains/kotlin, https://github.com/Kotlin/kotlinx.coroutines,
+  https://github.com/Kotlin/kotlinx.serialization and https://github.com/JetBrains/java-annotations
+Copyright: JetBrains s.r.o. and Kotlin Programming Language contributors
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+AndroidHiddenApiBypass
+----------------------
+
+org.lsposed.hiddenapibypass:hiddenapibypass (the version in gradle/libs.versions.toml), pulled in by the
+module audio-bridge.
+
+Source: https://github.com/LSPosed/AndroidHiddenApiBypass
+Copyright: LSPosed
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+JSpecify and ListenableFuture
+-----------------------------
+
+Annotations and one interface that the libraries above pull in.
+
+  org.jspecify:jspecify               The JSpecify Authors   https://github.com/jspecify/jspecify
+  com.google.guava:listenablefuture   The Guava Authors      https://github.com/google/guava
+
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+Basic Call Recorder (BCR) and Basic Call Player (BCP)
+-----------------------------------------------------
+
+Parts of the code follow or are adapted from these two projects, which is why this repository uses their
+license. Each file says so in its header.
+
+  core/src/main/kotlin/io/github/incallagent/core/Redact.kt
+      adapted from redactTruncate in BCR's OutputFilenameGenerator (commit 8c218fa)
+  audio-bridge/src/main/kotlin/io/github/incallagent/audiobridge/DownlinkRecorder.kt
+      follows the capture in BCR's RecorderThread.recordUntilCancelled (commit 8c218fa)
+  audio-bridge/src/main/kotlin/io/github/incallagent/audiobridge/UplinkToneInjector.kt
+      follows the output in BCP's PlayerThread.playUntilCancelled (commit 57977e5)
+  settings.gradle.kts, apps/rotep/build.gradle.kts, build-logic/src/main/kotlin/MagiskModulePlugin.kt
+      the build layout of BCR (build files, not part of the app itself)
+
+Source: https://github.com/chenxiaolong/BCR and https://github.com/chenxiaolong/BCP
+Copyright: Andrew Gunnerson
+License: GNU General Public License v3.0 (the LICENSE file at the top of the repository)
+
+
+Material Icons
+--------------
+
+A few icons of the Material Icons (outlined style), as vector drawables:
+src/main/res/drawable/ic_*.xml. They are copied from the copies bundled with Android Studio, so
+nothing is downloaded at build time; the theme tint of each file was removed (the screens color the
+icons). The Material Icons are used rather than the Material Symbols because those copies are on
+hand without a download.
+
+Source: https://github.com/google/material-design-icons
+Copyright: Google LLC
+License: Apache License, Version 2.0
+  https://www.apache.org/licenses/LICENSE-2.0
+
+
+Fonts: GenEi Kiwami Gothic and Dela Gothic One
+---------------------------------------------
+
+Two display fonts for the title and the big headings, in src/main/res/font/. Both are included
+unchanged (only the file names follow the Android resource rules); body text uses the phone's font.
+
+  genei_kiwami_go.ttf   源暎きわみゴ (GenEi Kiwami Gothic) Ver 1.2, from http://okoneya.jp/font/
+                        Copyright (c) 2025, おたもん, with Reserved Font Names '源暎' and 'GenEi',
+                        and the copyrights of the fonts it is made from (Dela Gothic One, Hind,
+                        Source Han Sans with Reserved Font Name 'Source', and others), as listed in
+                        licenses/OFL-GenEiKiwamiGo.txt
+  dela_gothic_one.ttf   Dela Gothic One Regular, from https://github.com/google/fonts
+                        Copyright 2020 The Dela Gothic Project Authors
+                        (https://github.com/syakuzen/DelaGothic)
+
+License: SIL Open Font License, Version 1.1 (the full texts, with the copyright notices, are in
+licenses/OFL-GenEiKiwamiGo.txt and licenses/OFL-DelaGothicOne.txt)
+  https://openfontlicense.org
+
+
+The bird pictures (the app icon and the bird on the screens)
+------------------------------------------------------------
+
+  src/main/res/raw/aitel_bird_*.webp
+  src/main/res/drawable-nodpi/aitel_bird_*_still.png
+  src/main/res/drawable-nodpi/ic_launcher_foreground.png
+  src/main/res/drawable-nodpi/ic_launcher_monochrome.png
+
+Author and copyright: ramalong, the project's owner. All rights reserved.
+License: none. The GPL-3.0 of this repository does not cover these pictures. They are included for use
+in this app only; using them anywhere else needs the author's permission.
+
+Changes made for the app: the pictures were cut to the bird and reduced to at most 400 pixels on the
+longest side; the animated GIFs were saved as animated WebP, and their first frames as PNG. In all the
+GIFs except the walking bird's, parts of the black lines, eyes and beak that were transparent were
+filled in. For the icon, the bird was lifted off its yellow background, and a one-color version was
+made from it.
+
+
+Android Debug Bridge and BoringSSL SPAKE2 (wire compatibility only)
+-------------------------------------------------------------------
+
+src/main/kotlin/io/github/incallagent/rotep/shell/adb/ connects the app to the phone's own adbd
+through Wireless debugging. The code is written for this app, but to work it has to follow the wire
+formats of the Android Debug Bridge (packages/modules/adb in the Android Open Source Project, Apache
+License 2.0) and of the SPAKE2 exchange as BoringSSL implements it (crypto/curve25519/spake25519.c),
+including its two fixed points and its handling of the password scalar. No source file, library or
+binary of those projects is included in the app.

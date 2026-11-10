@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SPDX-License-Identifier: GPL-3.0-only
+
+    Template for /system/etc/permissions/privapp-permissions-<package>.xml.
+    @PACKAGE@ is replaced with the applicationId by the permissionsXml* task
+    (build-logic/src/main/kotlin/MagiskModulePlugin.kt).
+    Format follows BCR (https://github.com/chenxiaolong/BCR).
+-->
+<permissions>
+    <privapp-permissions package="@PACKAGE@">
+        <!-- Capture call audio (VOICE_DOWNLINK / VOICE_CALL) -->
+        <permission name="android.permission.CAPTURE_AUDIO_OUTPUT" />
+        <!-- Bind our InCallService without being the default dialer -->
+        <permission name="android.permission.CONTROL_INCALL_EXPERIENCE" />
+        <!-- Play to the TYPE_TELEPHONY output device (BCP method, uplink method b) -->
+        <permission name="android.permission.MODIFY_PHONE_STATE" />
+        <!-- AudioManager call audio interception APIs (uplink method a) -->
+        <permission name="android.permission.CALL_AUDIO_INTERCEPTION" />
+    </privapp-permissions>
+</permissions>

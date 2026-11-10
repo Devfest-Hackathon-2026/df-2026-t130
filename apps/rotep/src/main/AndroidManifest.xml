@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Nothing privileged is declared here: the call audio goes through the helper, a process that
+        runs as the shell user (shell/). As a priv-app the list would be the one allowlisted in
+        magisk-module/privapp-permissions.xml (see poc/src/main/AndroidManifest.xml).
+    -->
+
+    <!-- Delegated call flow (stages L0 and L2) -->
+    <!-- Gemini Live -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- A call made at a chosen time checks that the network is there before it dials -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- L0: the phone's own microphone; LocalAudioRoute sets the audio mode and output -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- L2: TelecomManager.placeCall to the approved number only -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- CallService: microphone (L0) or phoneCall (L2/L3) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <!-- Required for foregroundServiceType="phoneCall" when not the default dialer -->
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The hand-over alert: by default the user is not listening to the call, so the earpiece alone is not enough -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Track 3: call control -->
+    <!-- L3: Telecom binds RotepInCallService while this app op is allowed by adb (see a4.md) -->
+    <uses-permission android:name="android.permission.MANAGE_ONGOING_CALLS" />
+    <!-- L3: TelecomManager.isInCall (no call is placed while another call is going on) -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- A booking in the phone's Google calendar, only after the user turns it on in the settings (ADR-039) -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- A call at a time the user chose (schedule/): the alarm that wakes the app at that time -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- USE_EXACT_ALARM does not exist before Android 13 -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- The CPU stays on during such a call: nobody is using the phone -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Android 17 (targetSdk 37): the phone's own adbd is reached over the local network for the pairing and the start of the helper (ADR-041) -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- After a restart: wait for Wi-Fi and start the helper (ADR-041); the 15-minute look at the owner's server goes on, only while a server is set up (ADR-042) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Given only with `pm grant` from the shell (the app's own adb connection): lets the app turn Wireless debugging on after a restart -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- L0 works without a modem -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Aitel">
+
+        <!-- The 15-minute look at the owner's server (request/RelayPollJob), only while a server is set up (ADR-042) -->
+        <service
+            android:name=".request.RelayPollJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Started while the app is in front, before dialing (see CallService) -->
+        <service
+            android:name=".service.CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|phoneCall" />
+
+        <!--
+            A Wireless debugging pairing (ADR-041): the code goes in through the notification while
+            Settings stays open. A short foreground service, only for those minutes, started while
+            the app is in front; the receiver takes the code from the notification (the app's own
+            PendingIntent only).
+        -->
+        <service
+            android:name=".service.AdbPairingService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
+        <receiver
+            android:name=".service.AdbCodeReceiver"
+            android:exported="false" />
+
+        <!--
+            After a restart or an update, and the app's own "起動" notification button (ADR-041). Not
+            exported: only the system and the app's PendingIntents reach it.
+        -->
+        <receiver
+            android:name=".service.AdbStartReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Watches the helper from the start of the process (see the class). Carries no data, not exported. -->
+        <provider
+            android:name=".service.AdbInitProvider"
+            android:authorities="${applicationId}.adbinit"
+            android:exported="false"
+            android:initOrder="-1" />
+
+        <!-- The guide for the first setup without a PC. Opened from the diagnostics screen only. -->
+        <activity
+            android:name=".ui.setup.SetupGuideActivity"
+            android:exported="false"
+            android:label="最初の準備"
+            android:taskAffinity="io.github.incallagent.rotep.diag" />
+
+        <!-- The app's name, version, licenses and links. Opened from the settings only. -->
+        <activity
+            android:name=".ui.about.AboutActivity"
+            android:exported="false"
+            android:label="このアプリについて" />
+
+        <!-- The alarms of a call at a time the user chose. Reached only by the app's own PendingIntents -->
+        <receiver
+            android:name=".schedule.ScheduleReceiver"
+            android:exported="false" />
+
+        <!-- Track 3: call control -->
+        <!--
+            L3: non-UI InCallService (no IN_CALL_SERVICE_UI meta-data). Disabled until
+            TelecomCallControl enables it right before placing the call, and disabled again when
+            the call is over. Never a foreground service and never a notification (CallService is).
+        -->
+        <service
+            android:name=".service.RotepInCallService"
+            android:enabled="false"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>
+
+        <!--
+            The store-callback notice (ADR-047): the phone shows this service each call once the user
+            has made this app the call-screening app. It only ever lets the call through.
+        -->
+        <service
+            android:name=".callback.CallbackScreeningService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Track 1: helper -->
+        <!--
+            Receives the helper's binder from the shell process (HelperProvider). The shell holds
+            INTERACT_ACROSS_USERS_FULL and normal apps do not, so the permission keeps them from
+            reaching this provider; the provider also checks the caller's uid itself.
+            The authority is HelperProtocol.AUTHORITY (a unit test keeps the two in step).
+        -->
+        <provider
+            android:name=".shell.HelperProvider"
+            android:authorities="${applicationId}.helper"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!--
+            Requests from another AI, through adb (apps/rotep/mcp). Only the shell user gets past the
+            check in PhoneRequestProvider, and a request only waits for the user: it cannot start a call.
+            The authority is PhoneRequestProtocol.AUTHORITY (a unit test keeps the two in step).
+        -->
+        <provider
+            android:name=".request.PhoneRequestProvider"
+            android:authorities="${applicationId}.request"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- Track 1: helper -->
+        <!-- The diagnostics screen: its own task, opened only from the app (settings, "困ったとき", and the app's notifications). -->
+        <activity
+            android:name=".diag.DiagnosticsActivity"
+            android:exported="false"
+            android:label="診断"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.github.incallagent.rotep.diag">
+        </activity>
+    </application>
+</manifest>

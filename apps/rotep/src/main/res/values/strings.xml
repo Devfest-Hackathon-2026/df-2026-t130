@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<resources>
+    <!--
+        The app's name, decided by the owner on 2026-11-08: "アイてる!? - AITEL -" (AI + TEL; read in
+        Japanese, AITEL sounds like 空いてる). The short name (the launcher, the system's dialogs) is
+        app_name; the title on every screen is app_name, then app_title_sub.
+    -->
+    <string name="app_name">アイてる!?</string>
+    <string name="app_title_sub">- AITEL -</string>
+    <!-- The title as screen readers say it: words, not the punctuation; AITEL as one word, not spelled -->
+    <string name="app_title_spoken">アイてる エーアイテル</string>
+
+    <!--
+        The key words of the screens, decided in one place (incall-ui-design, 2). Other texts quote
+        some of them word for word (the notification of CallService, the instructions of
+        ManualCallControl), so keep them exactly as they are. "ミュート" is not used: say which
+        microphone instead ("端末のマイクを止める").
+    -->
+    <!-- Stops the AI's voice; the line stays open and the user talks -->
+    <string name="stop_ai">AI を止めて本人に代わる</string>
+    <!-- L2, only when the app cannot see the answer itself: the user tells it the other side answered (once) -->
+    <string name="answered">相手が出た</string>
+    <!-- L2, only when the app cannot see the end itself: the user ended the call on the phone's call screen -->
+    <string name="hung_up">切った</string>
+    <!-- L2 and L3: ends the call from this screen -->
+    <string name="hang_up">電話を切る</string>
+    <!-- Puts the approval into the delegation policy and starts dialing (L2) -->
+    <string name="approve_and_call">承認して電話する</string>
+    <!-- L0: the same approval, but no call is made -->
+    <string name="approve_practice">承認して練習を始める</string>
+    <string name="fix_request">直す</string>
+    <string name="show_result">結果を見る</string>
+    <!-- L0 on the request, confirm, call and result screens -->
+    <string name="transcript_title">会話（この画面にだけ出ます）</string>
+    <string name="transcript_caveat">聞き取りの結果です。相手が聞いた言葉とは限りません</string>
+</resources>

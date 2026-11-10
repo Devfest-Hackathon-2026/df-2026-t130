@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<resources>
+    <!-- What shows before the first screen is drawn: the app's own colors, not a dark window (light phones) -->
+    <style name="Theme.Aitel" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFE4B1</item>
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+    </style>
+</resources>
